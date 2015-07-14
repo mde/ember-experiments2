@@ -1,21 +1,23 @@
 import Ember from 'ember';
+import Thingy from '../thingy';
 
-export default Ember.Controller.extend({
+export default Ember.Controller.extend(Thingy, {
   foo: null,
   bar: null,
   baz: true,
   queryParams: ['foo', 'bar'],
 
+  actions: {
+    someAction: function () {
+      console.log('called someAction', arguments);
+    }
+  },
+
   init: function () {
-    var self = this;
-    this.get('fooChange');
-    this.addObserver('foo', this, 'qsParamsChanged');
-    console.log('^^^', this.get('foo'));
-    setTimeout(function () {
-      //console.log('>>>', self.get('foo'));
-      //self.set('baz', '1111');
-    }, 500);
 		this._super.apply(this, arguments);
+    var asdf = ['zerb'].find(function () {
+      return true;
+    });
   },
 
   fooChange: function () {

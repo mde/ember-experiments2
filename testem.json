@@ -1,0 +1,16 @@
+{
+  "cwd": "dist",
+  "test_page": "tests/index.html",
+  "before_tests": "ember build --environment=test",
+  "launch_in_ci": [
+    "PhantomJS"
+  ],
+  "launch_in_dev": [
+    "PhantomJS",
+    "Chrome"
+  ],
+  "framework": "custom",
+  "routes": {
+    "/vendor": "../vendor"
+  }
+}
