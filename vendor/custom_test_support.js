@@ -1,81 +1,181 @@
 
-/* jshint ignore:start */
+(function () {
 
-runningTests = true;
+  var CustomReporter = function (runner, options) {
+    var self = this;
+    this.testRun = null; // Set by the ctor wrapper
 
-jQuery(document).ready(function() {
+    // Set up brower output as well
+    new Mocha.reporters.HTML(runner, options);
 
-  mocha.setup({
-    ui: 'tdd'
-  });
+    runner.on('pass', function(test){
+      self.testRun.handleResult(test);
+    });
 
-  var qUnitModule;
-  var qUnitModuleSuites = {};
-  var qUnitTest = window.test;
+    runner.on('fail', function(test, err){
+      self.testRun.handleResult(test, err);
+    });
 
-  // Used in the QUnit linting tests
-  window.ok = function assert(bool, message) {
+    runner.on('end', function(){
+      self.testRun.handleEnd();
+    });
+  };
+
+  var CustomFrameworkAdapter = function (testRun) {
+    var self = this;
+    this.testRun = testRun;
+    this.socket = null;
+    this.setup = function (socket) {
+      self.socket = socket;
+    };
+  };
+
+  var TestRun = function () {
+    var self = this;
+
+    this.passed = 0;
+    this.failed = 0;
+    this.total = 0;
+    this.testResults = [];
+    this.adapter = new CustomFrameworkAdapter(this);
+
+    // Mocha will call reporter ctor with (runner, options), and
+    // in Phantom there's no partial application for ctors with bind.
+    // Wrap the ctor to add the TestRun context to the instantiated
+    // reporter
+    this.CustomReporterCtor = function (runner, options) {
+      var reporter = new CustomReporter(runner, options);
+      reporter.testRun = self;
+      return reporter;
+    };
+  };
+
+  TestRun.prototype = new (function () {
+    this.start = function () {
+      this.adapter.socket.emit("tests-start")
+    };
+
+    this.handleResult = function (test, err) {
+      this.total++;
+      var result = {
+        passed: 0
+      , failed: 0
+      , total: this.total
+      , id: this.total
+      , name: test.fullTitle()
+      , items: []
+      };
+      // Fails
+      if (err) {
+        this.failed++;
+        result.items.push({
+          passed: false
+        , message: err.message
+        , stack: err.stack ? err.stack : undefined
+        });
+      }
+      // Passes
+      else {
+         this.passed++;
+      }
+      result.passed = this.passed;
+      result.failed = this.failed;
+      this.testResults.push(result);
+      this.adapter.socket.emit("test-result", result)
+    };
+
+    this.handleEnd = function () {
+      this.adapter.socket.emit("all-test-results", {
+        total: this.total,
+        passed: this.passed,
+        failed: this.failed,
+        tests: this.testResults
+      });
+    };
+  })();
+
+  jQuery(document).ready(function() {
+    var testRun = new TestRun();
+
+    // Tell Testem to use your adapter
+    Testem.useCustomAdapter(testRun.adapter.setup)
+
+    mocha.setup({
+      ui: 'tdd',
+      reporter: testRun.CustomReporterCtor
+    });
+
+    var qUnitModule;
+    var qUnitModuleSuites = {};
+    var mochaTest = window.test;
+
+    // Used in the QUnit linting tests
+    window.ok = function assert(bool, message) {
         if (!bool) {
             throw new Error(message)
         }
-    }
+    };
 
-  // Override QUnit `module` so it records the names of suites to create
-  // in Mocha
-  window.module = function (moduleName) {
-    qUnitModule = qUnitModuleSuites[moduleName] || [];
-    qUnitModuleSuites[moduleName] = qUnitModule;
-  };
+    // Override QUnit `module` so it records the names of suites to create
+    // in Mocha
+    window.module = function (moduleName) {
+      qUnitModule = qUnitModuleSuites[moduleName] || [];
+      qUnitModuleSuites[moduleName] = qUnitModule;
+    };
 
-  // Override `test` so it queues up tests to go with each suite in QUnit
-  // Each QUnit `test` invocation is preceed by a `module` call. If we have
-  // an existing qUnitModule saved, we know this was from the builtin
-  // QUnit linting tests. Otherwise it's just a plain Mocha `test` invocation
-  // from inside its normal suite.
-  window.test = function (testName, testFunc) {
-    if (qUnitModule) {
-      qUnitModule.push([testName, testFunc]);
-      qUnitModule = null;
-    }
-    else {
-      qUnitTest(testName, testFunc);
-    }
-  };
+    // Override `test` so it queues up tests to go with each suite in QUnit
+    // Each QUnit `test` invocation is preceed by a `module` call. If we have
+    // an existing qUnitModule saved, we know this was from the builtin
+    // QUnit linting tests. Otherwise it's just a plain Mocha `test` invocation
+    // from inside its normal suite.
+    window.test = function (testName, testFunc) {
+      if (qUnitModule) {
+        qUnitModule.push([testName, testFunc]);
+        qUnitModule = null;
+      }
+      else {
+        mochaTest(testName, testFunc);
+      }
+    };
 
+    var TestLoader = require('ember-cli/test-loader')['default'];
+    TestLoader.prototype.shouldLoadModule = function(moduleName) {
+      //return moduleName.match(/[-_]test$/) || (!QUnit.urlParams.nojshint && moduleName.match(/\.jshint$/));
+      return moduleName.match(/[-_]test$/) || moduleName.match(/\.jshint$/);
+    };
 
-  var TestLoader = require('ember-cli/test-loader')['default'];
-  TestLoader.prototype.shouldLoadModule = function(moduleName) {
-    //return moduleName.match(/[-_]test$/) || (!QUnit.urlParams.nojshint && moduleName.match(/\.jshint$/));
-    return moduleName.match(/[-_]test$/) || moduleName.match(/\.jshint$/);
-  };
-
-  TestLoader.prototype.moduleLoadFailure = function(moduleName, error) {
-    /*
-    QUnit.module('TestLoader Failures');
-    QUnit.test(moduleName + ': could not be loaded', function() {
-      throw error;
-    });
-    */
-  };
-
-  setTimeout(function() {
-
-    TestLoader.load();
-    //QUnit.start();
-    //
-    // Create Mocha suite/tests from the autogenerated QUinit linting tests
-    for (var p in qUnitModuleSuites) {
-      suite(p, function () {
-        qUnitModuleSuites[p].forEach(function (t) {
-          test(t[0], t[1]);
-        });
+    TestLoader.prototype.moduleLoadFailure = function(moduleName, error) {
+      /*
+      QUnit.module('TestLoader Failures');
+      QUnit.test(moduleName + ': could not be loaded', function() {
+        throw error;
       });
-    }
+      */
+    };
 
-    mocha.run();
-  }, 250);
-});
+    setTimeout(function() {
 
+      TestLoader.load();
+      //QUnit.start();
+      //
+      // Create Mocha suite/tests from the autogenerated QUinit linting tests
+      for (var p in qUnitModuleSuites) {
+        suite(p, function () {
+          qUnitModuleSuites[p].forEach(function (t) {
+            test(t[0], t[1]);
+          });
+        });
+      }
+      testRun.start();
+      mocha.run();
+    }, 250);
+  });
+
+})();
+
+/* jshint ignore:start */
+
+runningTests = true;
 
 /* jshint ignore:end */
 
