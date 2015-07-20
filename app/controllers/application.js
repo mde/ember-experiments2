@@ -15,9 +15,6 @@ export default Ember.Controller.extend(Thingy, {
 
   init: function () {
 		this._super.apply(this, arguments);
-    var asdf = ['zerb'].find(function () {
-      return true;
-    });
   },
 
   fooChange: function () {

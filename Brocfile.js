@@ -20,6 +20,7 @@ var app = new EmberApp();
 if (app.env == 'test') {
   app.import('vendor/mocha.js');
   app.import('vendor/mocha.css');
+  app.import('vendor/assert.js');
 }
 
 module.exports = app.toTree();

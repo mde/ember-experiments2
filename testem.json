@@ -12,5 +12,10 @@
   "framework": "custom",
   "routes": {
     "/vendor": "../vendor"
+  },
+  "proxies": {
+    "/api": {
+      "target": "http://localhost:9001"
+    }
   }
 }
